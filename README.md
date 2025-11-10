@@ -16,9 +16,9 @@ project/
 │   │   ├── gist_query.fvecs
 │   │   └── gist_groundtruth.ivecs
 │   └── deep1b/
-│       ├── deep10M_base.fvecs      # 10M subset
-│       ├── deep1b_query.fvecs
-│       └── deep1b_groundtruth.ivecs
+│       ├── base.10M.fbin               # 10M subset
+│       ├── query.public.10k.fbin
+│       └── groundtruth.public.10k.ibin
 │
 ├── evaluator.py                    # ANNEvaluator class for consistent metrics
 ├── datasets.py                     # Dataset loading utilities
