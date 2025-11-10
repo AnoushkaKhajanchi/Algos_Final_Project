@@ -83,6 +83,93 @@ class DatasetLoader:
             return data
     
     @staticmethod
+    def _read_fbin(filepath: str, count: Optional[int] = None) -> np.ndarray:
+        """
+        Read .fbin file format (Deep1B format).
+        
+        Format: [n, d, vector_data...]
+        where n = number of vectors (uint32)
+              d = dimension (uint32)
+              vector_data = n*d float32 values
+        
+        Args:
+            filepath: Path to .fbin file
+            count: Number of vectors to read (None = all)
+        
+        Returns:
+            Array of shape (n, d)
+        """
+        with open(filepath, 'rb') as f:
+            # Read header
+            n_total = np.fromfile(f, dtype=np.uint32, count=1)[0]
+            d = np.fromfile(f, dtype=np.uint32, count=1)[0]
+            
+            # Convert to Python int to avoid overflow
+            n_total = int(n_total)
+            d = int(d)
+            
+            # Debug output
+            print(f"  [_read_fbin] File header: n={n_total:,}, d={d}")
+            
+            # Determine how many vectors to actually read
+            n_read = n_total if count is None else min(n_total, count)
+            
+            # Read exactly n_read vectors
+            data = np.fromfile(f, dtype=np.float32, count=n_read * d)
+            
+            # Verify we got the expected amount of data
+            expected_size = n_read * d
+            actual_size = data.size
+            print(f"  [_read_fbin] Read {actual_size:,} values (expected {expected_size:,})")
+            
+            if actual_size != expected_size:
+                raise ValueError(
+                    f"Expected to read {expected_size} values but got {actual_size}. "
+                    f"File may be corrupted or truncated."
+                )
+            
+            # Reshape to (n_read, d)
+            data = data.reshape(n_read, d)
+            print(f"  [_read_fbin] Final shape: {data.shape}")
+            
+            return data
+    
+    @staticmethod
+    def _read_ibin(filepath: str, count: Optional[int] = None) -> np.ndarray:
+        """
+        Read .ibin file format (Deep1B ground truth format).
+        
+        Format: [n, k, indices...]
+        where n = number of queries (uint32)
+              k = number of neighbors (uint32)
+              indices = n*k uint32 values
+        
+        Args:
+            filepath: Path to .ibin file
+            count: Number of queries to read (None = all)
+        
+        Returns:
+            Array of shape (n_queries, k)
+        """
+        with open(filepath, 'rb') as f:
+            # Read header
+            n = np.fromfile(f, dtype=np.uint32, count=1)[0]
+            k = np.fromfile(f, dtype=np.uint32, count=1)[0]
+            
+            # Convert to Python int to avoid overflow
+            n = int(n)
+            k = int(k)
+            
+            if count is not None:
+                n = min(n, count)
+            
+            # Read indices
+            indices = np.fromfile(f, dtype=np.uint32, count=n*k)
+            indices = indices.reshape(n, k)
+            
+            return indices
+    
+    @staticmethod
     def _read_ivecs(filepath: str, count: Optional[int] = None) -> np.ndarray:
         """
         Read .ivecs file format (used for ground truth).
@@ -174,33 +261,21 @@ class DatasetLoader:
                     n_train: Optional[int] = None,
                     n_test: Optional[int] = None) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Load Deep1B dataset (or subset).
+        Load Deep1B dataset (10M subset with .fbin format).
         
         Args:
-            n_train: Number of training vectors to load (None = all)
+            n_train: Number of training vectors to load (None = all, max 10M for subset)
             n_test: Number of test queries to load (None = all, max 10K)
         
         Returns:
             (X_train, X_test) tuple of arrays
         """
-        print("Loading Deep1B dataset...")
-        base_path = os.path.join(self.data_dir, "deep1b", "deep1b_base.fvecs")
-        query_path = os.path.join(self.data_dir, "deep1b", "deep1b_query.fvecs")
+        print("Loading Deep1B-10M dataset...")
+        base_path = os.path.join(self.data_dir, "deep1b", "base.10M.fbin")
+        query_path = os.path.join(self.data_dir, "deep1b", "query.public.10K.fbin")
         
-        # Note: Deep1B base set can be very large (1B vectors)
-        # You might want to use a subset file like deep10M_base.fvecs
-        if not os.path.exists(base_path):
-            # Try alternative names for subsets
-            alt_names = ["deep10M_base.fvecs", "deep100M_base.fvecs"]
-            for alt in alt_names:
-                alt_path = os.path.join(self.data_dir, "deep1b", alt)
-                if os.path.exists(alt_path):
-                    base_path = alt_path
-                    print(f"  Using subset: {alt}")
-                    break
-        
-        X_train = self._read_fvecs(base_path, count=n_train)
-        X_test = self._read_fvecs(query_path, count=n_test)
+        X_train = self._read_fbin(base_path, count=n_train)
+        X_test = self._read_fbin(query_path, count=n_test)
         
         print(f"  Training: {X_train.shape} (dtype: {X_train.dtype})")
         print(f"  Test: {X_test.shape} (dtype: {X_test.dtype})")
@@ -293,11 +368,11 @@ DATASET_INFO = {
         'description': 'GIST global image features'
     },
     'deep1b': {
-        'name': 'Deep1B',
+        'name': 'Deep1B-10M',
         'dimension': 96,
-        'train_size': 1_000_000_000,  # 1 billion (use subsets)
+        'train_size': 10_000_000,  # 10 million (subset)
         'test_size': 10_000,
-        'description': 'Deep learning image features'
+        'description': 'Deep learning image features (10M subset)'
     }
 }
 
