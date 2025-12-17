@@ -231,6 +231,6 @@ If you use this code, please cite:
 
 Alessandro Castillo: agc2166@columbia.edu
 Anoushka Khajanchi: 
-Dev Goyal: 
+Dev Goyal: dg3513@columbia.edu
 
 ---
