@@ -6,23 +6,29 @@ This repository contains the experimental infrastructure for evaluating Johnson-
 
 ```
 project/
-├── data/                           # Dataset directory (not included)
+├── data/                           # Datasets not included in repo
 │   ├── sift/
 │   │   ├── sift_base.fvecs
 │   │   ├── sift_query.fvecs
 │   │   └── sift_groundtruth.ivecs
 │   ├── gist/
-│   │   ├── gist_base.fvecs
-│   │   ├── gist_query.fvecs
-│   │   └── gist_groundtruth.ivecs
-│   └── deep1b/
-│       ├── base.10M.fbin               # 10M subset
-│       ├── query.public.10k.fbin
-│       └── groundtruth.public.10k.ibin
+│       ├── gist_base.fvecs
+│       ├── gist_query.fvecs
+│       └── gist_groundtruth.ivecs
 │
 ├── evaluator.py                    # ANNEvaluator class for consistent metrics
 ├── datasets.py                     # Dataset loading utilities
-├── 01_baseline_knn.ipynb          # Baseline experiments (this file)
+├── 01_baseline_knn.ipynb           # Baseline experiments (this file)
+├── 03_lsh_ann_djl.ipynb            # Search for hyperparameters to use in experiments
+├── DJL+LSH_vs_H_gist.ipynb         # GIST Dataset experiments
+├── DJL+LSH_vs_H_gist.ipynb         # SIFT Dataset experiments
+│
+│
+├── pre_testing_notebooks/          # Testing DJL and LSH to figure out how we wanted to set up experiments/algorithm
+│   ├── 02_jl_ann_optimized.ipynb
+│   ├── 02_jl_ann.ipynb
+│   ├── 03_lsh_ann.ipynb
+│   └── 03_lsh_faiss_optimized.ipynb
 │
 ├── results/                        # Experiment results (auto-created)
 │   ├── baseline_knn_sift.json
@@ -124,23 +130,47 @@ The evaluator automatically computes:
 - **Memory**: Memory footprint in MB
 - **Recall statistics**: Mean, std, min, max across queries
 
-## Experimental Plan
+## Experiments & Results
 
-### Week 1-2: Baseline and JL Projection
-- [x] Baseline KNN (this notebook)
-- [ ] Implement JL projection (Achlioptas sparse random matrices)
-- [ ] Test JL with various target dimensions k ∈ {50, 75, 100, 150, 200, 300}
+We validated our theoretical Lipschitz analysis by simulating a **JL + LSH composition pipeline** on standard ANN benchmarks. Our goal was to determine if our derived **Hardness Score ($H$)** correlates with the probability of retrieval failure (i.e., failing to find the true nearest neighbor).
 
-### Week 3: LSH Implementation
-- [ ] Implement E2LSH (p-stable hashing)
-- [ ] Tune hyperparameters (K, L, w)
-- [ ] Compare with FAISS and HNSW baselines
+### Experimental Setup
+* **Datasets:** SIFT-1M (128d, local descriptors) and GIST-1M (960d, global descriptors).
+* **Pipeline:**
+    1.  **Dimension Reduction:** Gaussian Random Projection ($d \rightarrow d'$).
+    2.  **Indexing:** E2LSH (Exact Euclidean LSH) with $p$-stable distributions.
+* **Parameters:** We tested varying target dimensions ($d' \in \{32, 48, 96\}$) and LSH bucket widths ($r \in \{150, 250\}$).
 
-### Week 4: JL+LSH Composition
-- [ ] Combine JL projection with LSH indexing
-- [ ] Analyze collision probability preservation
-- [ ] Generate space-time-accuracy Pareto curves
-- [ ] Write final report
+### Key Findings
+
+#### 1. Hardness is a Strong Predictor of Failure
+Across all experimental settings, we observed a strong negative correlation between the Hardness Score and collision probability. Queries with high $H$ scores consistently failed to retrieve their true nearest neighbors, validating $H$ as a reliable confidence metric.
+
+#### 2. Distinct "Failure Zones" by Geometry
+We identified specific geometric thresholds where the JL distortion overwhelms the gap between the nearest neighbor and false positives. These thresholds vary by dataset geometry:
+* **SIFT-1M (Logarithmic Behavior):** Failures cluster in the high hardness range ($0.8 < H < 1.0$). The relationship between hardness and distance is logarithmic, reflecting the exponentially increasing volume of high-dimensional local feature spaces.
+* **GIST-1M (Linear Behavior):** Failures cluster in the lower range ($0.2 < H < 0.6$). The relationship is linear, due to GIST descriptors lying on a normalized hypersphere where Euclidean distance proxies angular separation.
+
+#### 3. Sensitivity to Quantization
+Tighter LSH bucket widths ($r=150$) resulted in a steeper drop-off in success probability relative to hardness compared to looser widths ($r=250$). However, the *ranking* of hard queries remained invariant—the same queries were identified as "hard" regardless of hyperparameters.
+
+### Visualizations
+*(See `results/` for full charts)*
+
+| Confidence Curve | Predictor Separation |
+| :---: | :---: |
+| ![Confidence Curve](path/to/your/confidence_chart.png) | ![Density Plot](path/to/your/density_chart.png) |
+| *Probability of success drops as Hardness ($H$) increases.* | *Failures (Red) are clearly separated from Successes (Green) by $H$.* |
+
+### Reproducing Results
+To replicate the experiments and generate the charts:
+
+1.  **Run the Verification Script:**
+    ```bash
+    python numerical_verification_E2LSH.py
+    ```
+2.  **Run the Dataset Analysis:**
+    Open `DJL+LSH_vs_H_sift.ipynb` or `DJL+LSH_vs_H_gist.ipynb` to execute the pipeline and visualize the geometric failure zones.
 
 ## Key Results to Track
 
@@ -151,44 +181,34 @@ For each method, track:
 3. **Dimensionality Scaling**: How performance changes with d
 4. **Optimal k**: Best target dimension for JL projection
 
-## Example: Comparing Multiple Methods
-
-```python
-# Evaluate multiple methods
-methods = [
-    ("KNN-Brute", knn_builder, knn_query),
-    ("JL+KNN k=100", jl_knn_builder, jl_knn_query),
-    ("E2LSH", lsh_builder, lsh_query),
-]
-
-all_results = []
-for name, builder, query in methods:
-    results = evaluator.evaluate(builder, query, method_name=name)
-    all_results.append(results)
-
-# Compare
-evaluator.compare_methods(all_results)
-```
 
 ## Tips for Next Notebooks
 
-### 02_jl_projection.ipynb (Next)
-- Implement Achlioptas sparse random projection
-- Test multiple target dimensions: k ∈ {50, 75, 100, 150, 200, 300}
-- Measure recall degradation vs dimensionality reduction
-- Plot space savings vs accuracy loss
+### 01_baseline_knn.ipynb
+- Establish ground truth using brute-force Exact k-NN (Linear Scan)
+- Benchmark query time, build time, and memory usage for SIFT-1M and GIST-1M
+- Validate that Recall@k is 1.0 to ensure dataset integrity
+- Set baseline performance metrics for later comparison with ANN methods
 
-### 03_lsh.ipynb
-- Implement E2LSH hash family
-- Test amplification parameters (K, L)
-- Compare with FAISS (Product Quantization)
-- Compare with HNSW (graph-based)
-
-### 04_jl_lsh.ipynb (Main Contribution)
+### 03_lsh_ann_djl.ipynb
 - Combine JL + LSH
 - Analyze collision probability preservation (Lipschitz analysis)
 - Generate final Pareto curves
 - Derive practical guidelines
+
+### DJL+LSH_vs_H_sift.ipynb
+- Execute the full JL + LSH pipeline on the SIFT-1M dataset (Local Descriptors)
+- Calculate the **Lipschitz Hardness Score ($H$)** for every query
+- Visualize the "Failure Zone" ($0.8 < H < 1.0$) where retrieval fails
+- Demonstrate the logarithmic relationship between hardness and query-neighbor distance
+- Validate that hardness rankings are invariant to bucket width ($r$) and target dimension ($d'$)
+
+### DJL+LSH_vs_H_gist.ipynb
+- Execute the full JL + LSH pipeline on the GIST-1M dataset (Global Descriptors)
+- Validate Hardness Score predictions on a dataset with different geometry (Hypersphere)
+- Visualize the "Failure Zone" ($0.2 < H < 0.6$) specific to normalized data
+- Demonstrate the linear relationship between hardness and angular distance
+- Confirm the robustness of the Hardness metric across diverse data manifolds
 
 ## Troubleshooting
 
@@ -230,7 +250,7 @@ If you use this code, please cite:
 ## Contact
 
 Alessandro Castillo: agc2166@columbia.edu
-Anoushka Khajanchi: 
+Anoushka Khajanchi: ak5446@columbia.edu
 Dev Goyal: dg3513@columbia.edu
 
 ---
