@@ -215,7 +215,7 @@ If you use this code, please cite:
 @article{jl-lsh-composition,
   title={Johnson-Lindenstrauss + LSH Composition via Lipschitz Analysis},
   author={Goyal, Dev and Castillo, Alessandro and Khajanchi, Anoushka},
-  year={2024}
+  year={2025}
 }
 ```
 
